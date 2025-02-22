@@ -14,6 +14,7 @@ class PrivacyStatus(str, Enum):
 class MemoraStatus(str, Enum):
     BASIC_INFO_COMPLETED = "basic_info_completed"
     VIDEO_INFO_COMPLETED = "video_info_completed"
+    ERROR_PROCESSING_VIDEO = "error_processing_video"
     PROCESSING_SOCIALMEDIA_DATA = "processing_socialmedia_data"
     CONCLUDED = "concluded"
     CONCLUDED_WITH_ANALYZER_ERROR = "concluded_with_analyzer_error"

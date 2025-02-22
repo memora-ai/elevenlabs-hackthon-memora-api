@@ -8,7 +8,7 @@ from app.core.database import get_db
 
 class MessageService:
     def __init__(self):
-        self._memora_agent = MemoraAgent()
+        pass
 
     async def create_message(
         self,
@@ -39,8 +39,11 @@ class MessageService:
             # Get chat history
             chat_history = await self.get_messages(message.memora_id, user_id, 3)
             
+            db_path = f"memora_{memora.id}.db"
+            memora_agent = MemoraAgent(db_path=db_path)
+
             # Generate response using the Memora agent
-            response = await self._memora_agent.generate_response(
+            response = await memora_agent.generate_response(
                 question=message.content,
                 memora_name=memora.full_name,
                 memora_bio=memora.bio,
@@ -130,7 +133,7 @@ class MessageService:
             stmt = (
                 select(DBMessage)
                 .filter(DBMessage.sent_by_id == user_id)
-                .order_by(DBMessage.timestamp.desc())
+                .order_by(DBMessage.timestamp.asc())
                 .offset(skip)
                 .limit(limit)
             )

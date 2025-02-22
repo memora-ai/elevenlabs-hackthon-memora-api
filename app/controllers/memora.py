@@ -70,7 +70,7 @@ async def get_memora(
     if db_memora is None:
         raise HTTPException(status_code=404, detail="Memora not found")
     
-    if not await MemoraService.can_access(db_memora, current_user["id"]):
+    if not await MemoraService.can_access(db_memora.id, current_user["id"]):
         raise HTTPException(status_code=403, detail="Not authorized to access this Memora")
     
     return db_memora
@@ -181,3 +181,17 @@ async def get_shared_users(
             detail="Memora not found or you're not the owner"
         )
     return shared_users
+
+@router.post("/{memora_id}/retry-analysis", response_model=MemoraResponse)
+async def retry_memora_analysis(
+    memora_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Retry processing a memora that failed during analysis"""
+    if not await MemoraService.is_owner(memora_id, current_user["id"]):
+        raise HTTPException(status_code=403, detail="Not authorized to modify this Memora")
+    
+    db_memora = await MemoraService.retry_analysis(memora_id)
+    if db_memora is None:
+        raise HTTPException(status_code=404, detail="Memora not found")
+    return db_memora

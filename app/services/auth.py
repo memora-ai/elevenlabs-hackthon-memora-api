@@ -91,7 +91,6 @@ def requires_auth(permission: str = None):
                 detail="Unable to parse authentication token",
             ) from exc
 
-        print(payload)
         # Extract user details from the token payload
         user_id = payload.get("sub", None)  # Use the 'sub' claim as the user ID
         email = payload.get("email", str(uuid.uuid4()) + '@memoras.ai')

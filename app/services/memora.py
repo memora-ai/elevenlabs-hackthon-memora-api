@@ -12,7 +12,8 @@ from app.utils.file_handler import FileHandler
 from app.tasks.social_media_processor import process_social_media_data
 from app.core.database import get_db
 from app.models.message import DBMessage
-import time
+from app.agents.user_analyzer import UserAnalyzer
+from multiprocessing import Process
 
 class MemoraService:
     @staticmethod
@@ -46,12 +47,13 @@ class MemoraService:
                 return None
 
             try:
-                # Save video file
-                video_filename = f"memora_{memora_id}_video.mp4"
+                # Save video file with original extension
+                original_extension = video_file.filename.split('.')[-1].lower()
+                video_filename = f"memora_{memora_id}_video.{original_extension}"
                 video_path = await FileHandler.save_upload_file(video_file, video_filename)
                 db_memora.video_path = video_path
 
-                # Extract audio from video
+                # Extract audio from video (output will be WAV)
                 audio_filename = f"memora_{memora_id}_audio.wav"
                 audio_path = await FileHandler.extract_audio(video_path, audio_filename)
                 db_memora.audio_path = audio_path
@@ -62,7 +64,7 @@ class MemoraService:
                 await db.refresh(db_memora)
                 return db_memora
             except Exception as e:
-                db_memora.status = MemoraStatus.ERROR
+                db_memora.status = MemoraStatus.ERROR_PROCESSING_VIDEO
                 db_memora.status_message = f"Video processing failed: {str(e)}"
                 await db.commit()
                 return db_memora
@@ -83,19 +85,22 @@ class MemoraService:
                 return None
 
             try:
+                # Update status immediately
                 db_memora.status = MemoraStatus.PROCESSING_SOCIALMEDIA_DATA
                 db_memora.status_message = "Started processing social media data"
                 await db.commit()
+                await db.refresh(db_memora)
                 
+                # Save file first
                 filename = f"memora_{memora_id}.zip"
                 file_path = await FileHandler.save_upload_file(zip_file, filename)
                 
+                # Add processing task to background tasks instead of using multiprocessing
                 background_tasks.add_task(
                     process_social_media_data,
-                    db=db,
-                    memora_id=memora_id,
-                    file_path=file_path,
-                    language=db_memora.language
+                    memora_id,
+                    file_path,
+                    db_memora.language
                 )
                 
                 return db_memora
@@ -103,6 +108,7 @@ class MemoraService:
                 db_memora.status = MemoraStatus.ERROR
                 db_memora.status_message = f"Social media processing failed: {str(e)}"
                 await db.commit()
+                await db.refresh(db_memora)
                 return db_memora
 
     @staticmethod
@@ -313,3 +319,36 @@ class MemoraService:
                 return None
             
             return memora.shared_with 
+
+    @staticmethod
+    async def retry_analysis(memora_id: int) -> Optional[DBMemora]:
+        """Retry processing a failed memora."""
+        async with get_db() as db:
+            stmt = select(DBMemora).filter(DBMemora.id == memora_id)
+            result = await db.execute(stmt)
+            db_memora = result.scalar_one_or_none()
+            
+            if not db_memora:
+                return None
+
+            try:
+                db_path = f"memora_{memora_id}.db"
+                analyzer = UserAnalyzer(db_path)
+                analysis_results = analyzer.analyze_user(db_memora.language)
+                
+                db_memora.bio = analysis_results["short_bio"]
+                db_memora.description = analysis_results["detailed_profile"]
+                db_memora.speak_pattern = analysis_results["speak_pattern"]
+                db_memora.status = MemoraStatus.CONCLUDED
+
+                await db.commit()
+                
+                return db_memora
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                db_memora.status = MemoraStatus.CONCLUDED_WITH_ANALYZER_ERROR
+                db_memora.status_message = f"Retry failed: {str(e)}"
+                await db.commit()
+                await db.refresh(db_memora)
+                return db_memora 

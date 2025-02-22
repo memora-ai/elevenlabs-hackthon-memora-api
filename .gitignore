@@ -1,4 +1,12 @@
 *.zip
+*.wav
+*.webm
+*.mp4
+*.mp3
+*.m4a
+*.mov
+*.avi
+*.mkv
 
 # Python
 __pycache__/

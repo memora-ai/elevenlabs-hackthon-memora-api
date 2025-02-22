@@ -1,7 +1,6 @@
 import os
 import shutil
 from fastapi import UploadFile
-from moviepy.editor import VideoFileClip
 import base64
 
 class FileHandler:
@@ -42,19 +41,24 @@ class FileHandler:
     async def extract_audio(video_path: str, audio_filename: str) -> str:
         """Extract audio from video file and save it."""
         try:
-            video = VideoFileClip(video_path)
-            audio = video.audio
-            
             # Ensure the uploads directory exists
             os.makedirs("uploads", exist_ok=True)
-            
-            # Save the audio file
             audio_path = os.path.join("uploads", audio_filename)
-            audio.write_audiofile(audio_path)
             
-            # Close the video file
-            video.close()
-            audio.close()
+            # Use ffmpeg for all video formats
+            import subprocess
+            command = [
+                'ffmpeg', '-i', video_path,
+                '-vn',  # No video
+                '-acodec', 'pcm_s16le',  # Convert to PCM WAV
+                '-ar', '44100',  # 44.1kHz sample rate
+                '-ac', '1',  # Mono
+                '-y',  # Overwrite output file if it exists
+                audio_path
+            ]
+            process = subprocess.run(command, capture_output=True, text=True)
+            if process.returncode != 0:
+                raise Exception(f"FFmpeg error: {process.stderr}")
             
             return audio_path
         except Exception as e:
