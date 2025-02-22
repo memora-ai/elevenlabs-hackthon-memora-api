@@ -5,7 +5,8 @@ from app.models.message import DBMessage, MessageCreate, MessageResponse
 from app.models.memora import DBMemora
 from app.agents.memora_agent import MemoraAgent
 from app.core.database import get_db
-
+from app.utils.elevenlabs_handler import ElevenLabsHandler
+from app.services.memora import MemoraService
 class MessageService:
     def __init__(self):
         pass
@@ -51,6 +52,11 @@ class MessageService:
                 speak_pattern=memora.speak_pattern,
                 chat_history=chat_history
             )
+
+            audio_data = await ElevenLabsHandler().create_speech(
+                voice_id=memora.voice_clone_id,
+                text=response
+            )
             
             # Create new message in the database
             db_message = DBMessage(
@@ -58,7 +64,8 @@ class MessageService:
                 content=message.content,
                 memora_id=message.memora_id,
                 sent_by_id=user_id,
-                response=response
+                response=response,
+                audio_data=audio_data
             )
             
             db.add(db_message)
@@ -73,6 +80,28 @@ class MessageService:
                 timestamp=db_message.timestamp,
                 response=db_message.response
             )
+
+    async def get_message_audio(
+        self,
+        message_id: str,
+        user_id: str
+    ) -> bytes:
+        print(f"Getting message audio for message_id: {message_id} and user_id: {user_id}")
+
+
+        async with get_db() as db:
+            stmt = select(DBMessage).filter(DBMessage.id == message_id)
+            result = await db.execute(stmt)
+            message = result.scalar_one_or_none()
+            
+            if not message:
+                raise ValueError(f"Message with id {message_id} not found")
+            
+            can_access = await MemoraService.can_access(message.memora_id, user_id)
+            if not can_access:
+                raise ValueError(f"User with id {user_id} does not have access to memora with id {message.memora_id}")
+            
+            return message.audio_data
 
     async def get_messages(
         self, 

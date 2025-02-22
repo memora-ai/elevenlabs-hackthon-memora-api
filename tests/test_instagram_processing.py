@@ -20,7 +20,7 @@ async def run_test():
             return
 
         # Process the file
-        await process_social_media_data(db, 1, zip_path, 'pt-br')
+        await process_social_media_data(db, 1, zip_path, 'pt')
     except Exception as e:
         print(f"Error during test: {str(e)}")
     finally:

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Backgro
 from app.models.memora import MemoraCreate, MemoraResponse, MemoraUpdate, PrivacyStatus
 from app.services.memora import MemoraService
 from app.core.auth import get_current_user
+from app.models.user import UserResponse
+from app.services.user import UserService
 
 router = APIRouter()
 
@@ -126,6 +128,28 @@ async def delete_memora(
     if not success:
         raise HTTPException(status_code=404, detail="Memora not found")
     return {"message": "Memora deleted successfully"}
+
+@router.get("/{memora_id}/shared-with", response_model=List[UserResponse])
+async def get_shared_with_users(
+    memora_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get list of users (with details) that a memora is shared with"""
+    if not await MemoraService.can_access(memora_id, current_user["id"]):
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to access this Memora"
+        )
+    
+    shared_users = await MemoraService.get_shared_with_users(
+        memora_id=memora_id
+    )
+    if shared_users is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Memora not found"
+        )
+    return shared_users
 
 @router.post("/{memora_id}/share/{user_id}", response_model=MemoraResponse)
 async def share_memora(

@@ -1,4 +1,6 @@
 from typing import List, Optional
+import logging
+import asyncio
 from fastapi import UploadFile, BackgroundTasks
 from sqlalchemy import select, or_
 from app.models.memora import (
@@ -13,7 +15,10 @@ from app.tasks.social_media_processor import process_social_media_data
 from app.core.database import get_db
 from app.models.message import DBMessage
 from app.agents.user_analyzer import UserAnalyzer
-from multiprocessing import Process
+from app.utils.elevenlabs_handler import ElevenLabsHandler
+from app.models.user import User, UserResponse
+
+logger = logging.getLogger(__name__)
 
 class MemoraService:
     @staticmethod
@@ -58,6 +63,18 @@ class MemoraService:
                 audio_path = await FileHandler.extract_audio(video_path, audio_filename)
                 db_memora.audio_path = audio_path
 
+                logger.info(f"Creating voice clone for memora {db_memora.full_name}")
+
+                voice_clone = await ElevenLabsHandler().create_voice_clone(
+                    name=db_memora.full_name,
+                    audio_path=audio_path,
+                    description=f"Voice clone for memora {db_memora.full_name}"
+                )
+
+                logger.info(f"Voice clone created for memora {db_memora.full_name} with voice_id {voice_clone['voice_id']}")
+
+                db_memora.voice_clone_id = voice_clone["voice_id"]
+
                 db_memora.status = MemoraStatus.VIDEO_INFO_COMPLETED
                 db_memora.status_message = "Video processed and audio extracted successfully"
                 await db.commit()
@@ -68,6 +85,40 @@ class MemoraService:
                 db_memora.status_message = f"Video processing failed: {str(e)}"
                 await db.commit()
                 return db_memora
+
+
+    @staticmethod
+    async def process_social_media_async(memora_id, file_path, language):
+        """Process social media data asynchronously"""
+        try:
+            # Convert the synchronous function call to asynchronous
+            await asyncio.to_thread(process_social_media_data, memora_id, file_path, language)
+            
+            async with get_db() as db:
+                # Update memora status after processing
+                stmt = select(DBMemora).filter(DBMemora.id == memora_id)
+                result = await db.execute(stmt)
+                db_memora = result.scalar_one_or_none()
+                
+                if db_memora:
+                    db_memora.status = MemoraStatus.SOCIALMEDIA_DATA_COMPLETED
+                    db_memora.status_message = "Social media data processed successfully"
+                    await db.commit()
+                    await db.refresh(db_memora)
+                
+        except Exception as e:
+            logger.error(f"Error processing social media data: {str(e)}")
+            async with get_db() as db:
+                stmt = select(DBMemora).filter(DBMemora.id == memora_id)
+                result = await db.execute(stmt)
+                db_memora = result.scalar_one_or_none()
+                
+                if db_memora:
+                    db_memora.status = MemoraStatus.ERROR
+                    db_memora.status_message = f"Error processing social media data: {str(e)}"
+                    await db.commit()
+                    await db.refresh(db_memora)
+
 
     @staticmethod
     async def process_social_media(
@@ -352,3 +403,25 @@ class MemoraService:
                 await db.commit()
                 await db.refresh(db_memora)
                 return db_memora 
+
+    @staticmethod
+    async def get_shared_with_users(memora_id: int) -> Optional[List[UserResponse]]:
+        """Get detailed information about users a memora is shared with"""
+        async with get_db() as db:
+            # First get the memora to access shared_with list
+            stmt = select(DBMemora).filter(DBMemora.id == memora_id)
+            result = await db.execute(stmt)
+            memora = result.scalar_one_or_none()
+            
+            if not memora:
+                return None
+            
+            # Get user details for each shared_with user_id
+            if not memora.shared_with:
+                return []
+            
+            stmt = select(User).filter(User.id.in_(memora.shared_with))
+            result = await db.execute(stmt)
+            users = result.scalars().all()
+            
+            return [UserResponse.model_validate(user) for user in users] 

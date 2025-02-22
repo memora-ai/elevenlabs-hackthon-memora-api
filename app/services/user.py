@@ -1,8 +1,14 @@
 from app.models.user import User
 from sqlalchemy.future import select
 from app.core.database import get_db
+from sqlalchemy import or_
+from app.services.base import BaseService
+from typing import Optional, Dict, Any, List
 
-class UserService:
+class UserService(BaseService[User, dict, dict]):
+    def __init__(self):
+        super().__init__(User)
+
     async def get_user_by_id(self, user_id: str) -> User | None:
         """
         Retrieve a user by their ID.
@@ -76,3 +82,28 @@ class UserService:
             await db.delete(user)
             await db.commit()
             return True
+
+    async def get_multi(
+        self,
+        user_id: str,
+        skip: int = 0,
+        limit: int = 100,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[User]:
+        conditions = []
+        
+        async with get_db() as db:
+            if filters:
+                if "name" in filters:
+                    conditions.append(self.model.name.ilike(f"%{filters['name']}%"))
+
+            conditions.append(self.model.id != user_id)
+
+            stmt = select(self.model)
+            if conditions:
+                stmt = stmt.filter(or_(*conditions))
+            stmt = stmt.offset(skip).limit(limit)
+            
+            result = await db.execute(stmt)
+            users = result.scalars().all()
+            return users

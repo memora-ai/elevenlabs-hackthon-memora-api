@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, JSON
 from sqlalchemy.orm import relationship
+from pydantic import BaseModel
+from typing import Optional, List
 
 from app.core.database import Base
 
@@ -25,3 +27,14 @@ class User(Base):
             'email': self.email,
             'permissions': self.permissions
         }
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    picture: Optional[str] = None
+    is_active: bool = True
+
+    class Config:
+        from_attributes = True
+

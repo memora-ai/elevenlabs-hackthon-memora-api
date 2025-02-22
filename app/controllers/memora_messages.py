@@ -1,5 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
 from typing import List
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+import io
 from app.models.message import MessageCreate, MessageResponse
 from app.services.message_service import MessageService
 from app.services.memora import MemoraService
@@ -32,3 +34,20 @@ async def get_messages(
         raise HTTPException(status_code=403, detail="Not authorized to view messages from this Memora")
     
     return await message_service.get_messages(memora_id, current_user["id"])
+
+@router.get("/{message_id}/audio", response_class=StreamingResponse)
+async def get_message_audio(
+    message_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> StreamingResponse:
+    """Get the audio file for a specific message"""
+    audio_data = await message_service.get_message_audio(message_id, current_user["id"])
+    
+    return StreamingResponse(
+        io.BytesIO(audio_data),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": f"attachment; filename=message_{message_id}.mp3"
+        }
+    )
+

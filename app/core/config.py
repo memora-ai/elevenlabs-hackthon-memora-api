@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     API_AUDIENCE: str = ""
     ALGORITHMS: str = "RS256"  # This can keep a default
 
+    ELEVENLABS_APIKEY: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True  # Added to ensure exact matching of env variables

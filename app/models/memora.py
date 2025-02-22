@@ -39,6 +39,7 @@ class DBMemora(Base):
     audio_path = Column(String, nullable=True)
     profile_picture_base64 = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    voice_clone_id = Column(String, nullable=True)
     
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     user = relationship("User", back_populates="memoras")
@@ -53,7 +54,8 @@ class MemoraBase(BaseModel):
     language: str
     birthday: date
     privacy_status: Optional[PrivacyStatus] = PrivacyStatus.PRIVATE
-
+    voice_clone_id: Optional[str] = None
+    shared_with: Optional[list] = None
 
 class MemoraCreate(BaseModel):
     full_name: str

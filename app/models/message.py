@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, LargeBinary
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -16,6 +16,7 @@ class DBMessage(Base):
     memora_id = Column(Integer, ForeignKey("memoras.id"), index=True)
     sent_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    audio_data = Column(LargeBinary, nullable=True)
     
     memora = relationship("DBMemora", back_populates="messages")
     sent_by = relationship("User", back_populates="messages")
