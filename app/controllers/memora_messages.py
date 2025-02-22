@@ -51,3 +51,18 @@ async def get_message_audio(
         }
     )
 
+@router.get("/{message_id}/video")
+async def get_message_video_url(
+    message_id: str,
+    current_user: dict = Depends(get_current_user)
+) -> str:
+    """Generate and retrieve a lip-synced video for a specific message"""
+    try:
+        video_url = await message_service.get_message_video_url(message_id, current_user["id"])
+        return video_url
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating lip-synced video: {str(e)}"
+        )
+

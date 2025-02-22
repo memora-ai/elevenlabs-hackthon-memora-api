@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     ELEVENLABS_APIKEY: str = ""
 
+    FALAI_APIKEY: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True  # Added to ensure exact matching of env variables

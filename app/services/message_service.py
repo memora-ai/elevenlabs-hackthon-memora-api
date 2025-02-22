@@ -1,4 +1,5 @@
 from typing import List
+import logging
 import uuid
 from sqlalchemy import select
 from app.models.message import DBMessage, MessageCreate, MessageResponse
@@ -7,6 +8,14 @@ from app.agents.memora_agent import MemoraAgent
 from app.core.database import get_db
 from app.utils.elevenlabs_handler import ElevenLabsHandler
 from app.services.memora import MemoraService
+from app.utils.falai_utils import sync_lipsync
+from app.models.memora import MemoraUpdate
+
+import os
+import tempfile
+
+logger = logging.getLogger(__name__)
+
 class MessageService:
     def __init__(self):
         pass
@@ -86,8 +95,7 @@ class MessageService:
         message_id: str,
         user_id: str
     ) -> bytes:
-        print(f"Getting message audio for message_id: {message_id} and user_id: {user_id}")
-
+        logger.info(f"Getting message audio for message_id: {message_id} and user_id: {user_id}")
 
         async with get_db() as db:
             stmt = select(DBMessage).filter(DBMessage.id == message_id)
@@ -102,6 +110,56 @@ class MessageService:
                 raise ValueError(f"User with id {user_id} does not have access to memora with id {message.memora_id}")
             
             return message.audio_data
+
+    async def get_message_video_url(
+        self,
+        message_id: str,
+        user_id: str
+    ) -> str:
+        async with get_db() as db:
+            stmt = select(DBMessage).filter(DBMessage.id == message_id)
+            result = await db.execute(stmt)
+            message = result.scalar_one_or_none()
+            
+            if not message:
+                raise ValueError(f"Message with id {message_id} not found")
+            
+            can_access = await MemoraService.can_access(message.memora_id, user_id)
+            if not can_access:
+                raise ValueError(f"User with id {user_id} does not have access to memora with id {message.memora_id}")
+            
+            if message.video_url:
+                return message.video_url
+            
+            memora = await MemoraService.get_memora(message.memora_id)
+            audio_data = await self.get_message_audio(message.id, user_id)
+
+            # Create temporary file for audio data
+            temp_audio_file = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
+                    temp_audio_file = temp_audio.name
+                    temp_audio.write(audio_data)
+
+                result = await sync_lipsync(
+                    video_url=memora.video_path,
+                    audio_url=temp_audio_file
+                )
+
+                if not memora.video_path.startswith('https'):
+                    await MemoraService.update_memora(memora.id, MemoraUpdate(video_path=result['input_video_url']))
+
+                output_video_url = result['output_video_url']
+
+                message.video_url = output_video_url
+                await db.commit()
+                await db.refresh(message)
+
+                return output_video_url
+            finally:
+                # Clean up temporary file
+                if temp_audio_file and os.path.exists(temp_audio_file):
+                    os.unlink(temp_audio_file)
 
     async def get_messages(
         self, 
@@ -135,6 +193,7 @@ class MessageService:
                     content=message.content,
                     memora_id=message.memora_id,
                     sent_by_id=user_id,
+                    video_url=message.video_url,
                     timestamp=message.timestamp,
                     response=message.response
                 )

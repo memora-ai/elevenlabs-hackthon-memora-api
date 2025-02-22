@@ -17,6 +17,7 @@ class DBMessage(Base):
     sent_by_id = Column(String, ForeignKey("users.id"), nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     audio_data = Column(LargeBinary, nullable=True)
+    video_url = Column(String, nullable=True)
     
     memora = relationship("DBMemora", back_populates="messages")
     sent_by = relationship("User", back_populates="messages")
@@ -25,6 +26,7 @@ class DBMessage(Base):
 class MessageBase(BaseModel):
     content: str
     memora_id: int
+    video_url: Optional[str] = None
 
 class MessageCreate(MessageBase):
     pass

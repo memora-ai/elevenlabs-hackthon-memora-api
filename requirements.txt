@@ -10,8 +10,9 @@ pandas>=2.0.0
 transformers==4.48.0
 translate==3.6.1
 mutagen==1.47.0
-whisper==1.16.1
-opencv-python==4.10.0
+whisper==1.1.10
+opencv-python==4.10.0.84
 aiosqlite==0.19.0
-asyncpg==0.25.0
+asyncpg==0.30.0
 moviepy==1.0.3
+fal-client==0.5.9
