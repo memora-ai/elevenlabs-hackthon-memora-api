@@ -1,9 +1,10 @@
 from pydantic import BaseModel
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Optional
 from enum import Enum
 from sqlalchemy import Column, Integer, String, Date, Enum as SQLAEnum, ForeignKey, JSON, DateTime
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from app.core.database import Base
 
 # Enums
@@ -38,7 +39,7 @@ class DBMemora(Base):
     video_path = Column(String, nullable=True)
     audio_path = Column(String, nullable=True)
     profile_picture_base64 = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     voice_clone_id = Column(String, nullable=True)
     
     user_id = Column(String, ForeignKey("users.id"), nullable=False)

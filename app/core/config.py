@@ -21,6 +21,9 @@ class Settings(BaseSettings):
 
     FALAI_APIKEY: str = ""
 
+    POSTHOG_API_KEY: str = ""
+    POSTHOG_HOST: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True  # Added to ensure exact matching of env variables

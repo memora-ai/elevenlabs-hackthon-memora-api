@@ -3,6 +3,8 @@ import logging
 import asyncio
 from fastapi import UploadFile, BackgroundTasks
 from sqlalchemy import select, or_
+from sqlalchemy import cast, Text
+
 from app.models.memora import (
     DBMemora,
     MemoraCreate,
@@ -268,7 +270,7 @@ class MemoraService:
             query = select(DBMemora).where(
                 or_(
                     DBMemora.user_id == user_id,
-                    DBMemora.shared_with.contains([user_id])
+                    cast(DBMemora.shared_with, Text).contains(user_id)
                 )
             )
 
@@ -384,6 +386,9 @@ class MemoraService:
 
             try:
                 db_path = f"memora_{memora_id}.db"
+                
+                logger.info(f"Analyzing memora {memora_id} with db_path {db_path}")
+
                 analyzer = UserAnalyzer(db_path)
                 analysis_results = analyzer.analyze_user(db_memora.language)
                 

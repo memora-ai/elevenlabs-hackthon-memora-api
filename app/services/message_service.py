@@ -49,12 +49,12 @@ class MessageService:
             # Get chat history
             chat_history = await self.get_messages(message.memora_id, user_id, 3)
             
-            db_path = f"memora_{memora.id}.db"
-            memora_agent = MemoraAgent(db_path=db_path)
+            memora_agent = MemoraAgent(memora_id=message.memora_id)
 
             # Generate response using the Memora agent
             response = await memora_agent.generate_response(
                 question=message.content,
+                memora_id=memora.id,
                 memora_name=memora.full_name,
                 memora_bio=memora.bio,
                 memora_description=memora.description,
@@ -62,11 +62,14 @@ class MessageService:
                 chat_history=chat_history
             )
 
-            audio_data = await ElevenLabsHandler().create_speech(
-                voice_id=memora.voice_clone_id,
-                text=response
-            )
-            
+            try:
+                audio_data = await ElevenLabsHandler().create_speech(
+                    voice_id=memora.voice_clone_id,
+                    text=response
+                )
+            except Exception as e:
+                logger.error(f"Error creating speech: {str(e)}")
+
             # Create new message in the database
             db_message = DBMessage(
                 id=str(uuid.uuid4()),

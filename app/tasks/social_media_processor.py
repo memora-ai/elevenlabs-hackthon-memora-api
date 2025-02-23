@@ -2,9 +2,10 @@ import logging
 import zipfile
 import os
 from pathlib import Path
+from datetime import datetime
+from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from docling.document_converter import DocumentConverter
 from docling.datamodel.base_models import InputFormat
@@ -13,6 +14,10 @@ from PIL import Image
 import whisper
 from mutagen import File as MutagenFile
 from transformers import BlipProcessor, BlipForConditionalGeneration
+
+from langchain_core.documents import Document
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 # Group app imports together
 from app.agents.user_analyzer import UserAnalyzer
@@ -211,6 +216,67 @@ async def scan_files(extract_path):
     
     return file_mapping
 
+
+def create_message_documents(memora_id: int) -> list[Document]:
+    """Create documents from message tables in the database"""
+    vector_documents = []
+
+    try:
+        # Get all message tables
+        message_tables = DatabaseHandler.get_tables_that_contains(memora_id, 'inbox')
+        
+        logger.info("Found %d message tables", len(message_tables))
+        
+        for table in message_tables:
+            logger.info("Processing vectorstore for table: %s", table)
+            df = DatabaseHandler.read_table(memora_id, table)
+
+            if 'content' in df.columns and 'sender_name' in df.columns and 'timestamp_ms' in df.columns:
+                logger.info("Processing table with cols: %s", df.columns)
+
+                # Convert timestamp_ms to readable date
+                df['formatted_date'] = df['timestamp_ms'].apply(
+                    lambda ts: datetime.fromtimestamp(ts/1000).strftime('%Y-%m-%d %H:%M:%S')
+                )
+
+                # Combine all messages into a single string with proper formatting
+                messages = df.apply(
+                    lambda row: f"{row['sender_name']} at {row['formatted_date']}: {row['content']}", 
+                    axis=1
+                )
+
+                combined_content = '\n'.join(messages)
+                
+                for message in messages:
+                    if message and len(message.strip()) > 0:
+                        doc = Document(
+                            page_content=message,
+                            metadata={'source': table, 'full_text': combined_content}
+                        )
+                        vector_documents.append(doc)
+
+        return vector_documents
+    except Exception as e:
+        logger.error("Error creating message documents: %s", str(e))
+        return []
+
+def create_vector_store(memora_id: int,documents: list[Document]):
+    """Create and save a vector store from documents"""
+    try:
+        hf_embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
+
+        logger.info("Creating vector store...")
+
+        Chroma.from_documents(
+            documents=documents,
+            embedding=hf_embeddings,
+            persist_directory=f"./memora_{str(memora_id)}_vectorstore"
+        )
+    except Exception as e:
+        logger.error("Error creating vector store: %s", str(e))
+
+
+
 async def process_social_media_data(memora_id: int, file_path: str, language: str = 'en'):
     extract_path = None
     async with get_db() as db:
@@ -272,7 +338,7 @@ async def process_social_media_data(memora_id: int, file_path: str, language: st
             file_mapping = await scan_files(extract_path)
             
             logger.info("Creating database for Memora %d", memora_id)
-            connection_string = DatabaseHandler.create_memora_database(memora_id)
+            connection_string = DatabaseHandler.generate_conn_string(memora_id)
             
             all_results = []
             all_dataframes = {}
@@ -297,6 +363,13 @@ async def process_social_media_data(memora_id: int, file_path: str, language: st
                 logger.info("Saving %d tables to database...", len(all_dataframes))
                 DatabaseHandler.save_dataframes(connection_string, all_dataframes)
                 logger.info("Database save completed")
+
+                logger.info("Processing message tables for vector storage...")
+                documents = create_message_documents(memora_id)
+
+                logger.info("Saving documents to vector store...")
+                create_vector_store(memora_id, documents)
+                logger.info("Vector store save completed")
 
             # Process media files
             media_files = []
@@ -325,7 +398,6 @@ async def process_social_media_data(memora_id: int, file_path: str, language: st
                 f"Social media data processed successfully. "
                 f"Found: {sum(len(files) for files in file_mapping.values())} files "
                 f"({', '.join(f'{len(files)} {ext}' for ext, files in file_mapping.items() if len(files) > 0)}). "
-                f"Processed {len(all_results)} files with content. "
                 f"Created {len(all_dataframes) + (1 if media_files else 0)} database tables."
             )
             
@@ -375,4 +447,5 @@ async def process_social_media_data(memora_id: int, file_path: str, language: st
             if extract_path and os.path.exists(extract_path):
                 import shutil
                 shutil.rmtree(extract_path)
-            logger.info("Cleanup completed") 
+            logger.info("Cleanup completed")
+

@@ -5,12 +5,14 @@ from app.core.config import settings
 import json
 from pathlib import Path
 import os
+from sqlalchemy import inspect
+from sqlalchemy.pool import StaticPool
 
 logger = logging.getLogger(__name__)
 
 class DatabaseHandler:
     @staticmethod
-    def create_memora_database(memora_id: int) -> str:
+    def generate_conn_string(memora_id: int) -> str:
         """Create a new database for a memora and return its connection string"""
         base_url = settings.DATABASE_URL.rsplit('/', 1)[0]
         db_name = f"memora_{memora_id}"
@@ -131,7 +133,15 @@ class DatabaseHandler:
     @staticmethod
     def save_dataframes(connection_string: str, dataframes: dict[str, pd.DataFrame]):
         """Save DataFrames to the database"""
-        engine = create_engine(connection_string)
+        # Add connect_args for SQLite to handle async operations
+        if connection_string.startswith('sqlite'):
+            engine = create_engine(
+                connection_string,
+                connect_args={'check_same_thread': False},
+                poolclass=StaticPool
+            )
+        else:
+            engine = create_engine(connection_string)
 
         for table_name, df in dataframes.items():
             try:
@@ -146,12 +156,15 @@ class DatabaseHandler:
                     df['timestamp'] = pd.Timestamp.now()
                 
                 logger.info("Saving table %s with %d rows", table_name, len(df))
-                df.to_sql(
-                    table_name,
-                    engine,
-                    if_exists='replace',
-                    index=False
-                )
+                
+                # Use a new connection for each operation
+                with engine.connect() as connection:
+                    df.to_sql(
+                        table_name,
+                        connection,
+                        if_exists='replace',
+                        index=False
+                    )
             except Exception as e:
                 logger.error("Error saving DataFrame to database: %s", str(e))
             
@@ -238,3 +251,34 @@ class DatabaseHandler:
                 
         except Exception as e:
             logger.error("Error saving media data to database: %s", str(e)) 
+
+    @staticmethod
+    def get_tables_that_contains(memora_id: int, text: str) -> list[str]:
+        """Get all table names that end with the specified suffix"""
+        try:
+            connection_string = DatabaseHandler.generate_conn_string(memora_id)
+
+            engine = create_engine(connection_string)
+            inspector = inspect(engine)
+            all_tables = inspector.get_table_names()
+            matching_tables = [table for table in all_tables if text in table]
+            
+            logger.info(f"Found {len(matching_tables)} tables with text '{text}'")
+            return matching_tables
+        except Exception as e:
+            logger.error(f"Error getting tables with text '{text}': {str(e)}")
+            return [] 
+
+    @staticmethod
+    def read_table(memora_id: int, table_name: str) -> pd.DataFrame:
+        """Read a table from the database and return it as a DataFrame"""
+        try:
+            connection_string = DatabaseHandler.generate_conn_string(memora_id)
+
+            engine = create_engine(connection_string)
+            df = pd.read_sql_table(table_name, engine)
+            logger.info(f"Successfully read table '{table_name}' with {len(df)} rows")
+            return df
+        except Exception as e:
+            logger.error(f"Error reading table '{table_name}': {str(e)}")
+            return pd.DataFrame() 

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from langchain.agents.agent_types import AgentType
 from langchain_community.agent_toolkits import create_sql_agent
@@ -8,17 +9,38 @@ from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
 from langchain_openai import AzureChatOpenAI
 from langchain.prompts import PromptTemplate
 
+import posthog
+from posthog.ai.langchain import CallbackHandler
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+posthog.project_api_key = settings.POSTHOG_API_KEY
+posthog.host = settings.POSTHOG_HOST
 
 class UserAnalyzer:
     def __init__(self, db_path: str):
         """Initialize the UserAnalyzer with database connection and LLM"""
         try:
+            self.db_path = db_path
+            sqlite_path = f"sqlite:///{db_path}"
             # Initialize SQLite database connection
-            self.db = SQLDatabase.from_uri(f"sqlite:///{db_path}")
+            logger.info(f"Initializing UserAnalyzer with db_path {sqlite_path}")
             
+            # Add debug logging for database connection
+            try:
+                self.db = SQLDatabase.from_uri(sqlite_path)
+                # Test the connection by getting tables
+                tables = self.db.get_usable_table_names()
+                logger.info(f"Successfully connected to database. Available tables: {tables}")
+            except Exception as db_error:
+                logger.error(f"Database connection error: {str(db_error)}")
+                # Check file permissions
+                logger.info(f"Database file exists: {os.path.exists(db_path)}")
+                logger.info(f"Database file permissions: {oct(os.stat(db_path).st_mode)[-3:]}")
+                raise
+
             # Initialize Azure OpenAI with settings from config
             self.llm = AzureChatOpenAI(
                 deployment_name=settings.AZURE_DEPLOYMENT_NAME,
@@ -107,8 +129,15 @@ class UserAnalyzer:
 
         chain = prompt | self.agent
 
+        callback_handler = CallbackHandler(
+            client=posthog,
+            distinct_id=self.db_path,
+            privacy_mode=False,
+            groups={"agent": "user_analyzer_agent"}
+        )
+
         # Execute the prompt
-        response = chain.invoke({'language': language})
+        response = chain.invoke({'language': language}, config={"callbacks": [callback_handler]})
 
         response_str = response['output']
         
