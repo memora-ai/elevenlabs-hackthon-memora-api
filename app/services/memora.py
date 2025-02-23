@@ -250,8 +250,7 @@ class MemoraService:
             if memora.privacy_status == PrivacyStatus.PUBLIC:
                 return True
             elif memora.privacy_status == PrivacyStatus.PRIVATE:
-                return False
-            # For RESTRICTED status, you might want to add additional logic here
+                return user_id in memora.shared_with
             
             return False
 
@@ -270,10 +269,17 @@ class MemoraService:
                 # For private memoras, check user ownership and shared_with
                 query = select(DBMemora).where(cast(DBMemora.shared_with, Text).contains(user_id))
                 query = query.where(DBMemora.user_id != user_id)
-            else:
+            elif privacy_status and privacy_status == PrivacyStatus.PUBLIC:
                 # Default to public memoras
                 query = select(DBMemora).where(DBMemora.privacy_status == PrivacyStatus.PUBLIC)
-
+            else:
+                # When privacy_status is None, show both public memoras and shared private ones
+                query = select(DBMemora).where(
+                    or_(
+                        DBMemora.privacy_status == PrivacyStatus.PUBLIC,
+                        DBMemora.privacy_status == PrivacyStatus.PRIVATE
+                    )
+                )
             # Apply name filter if provided
             if name:
                 query = query.where(DBMemora.name.ilike(f"%{name}%"))
