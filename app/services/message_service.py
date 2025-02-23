@@ -59,6 +59,7 @@ class MessageService:
                 memora_bio=memora.bio,
                 memora_description=memora.description,
                 speak_pattern=memora.speak_pattern,
+                language=memora.language,
                 chat_history=chat_history
             )
 
@@ -184,6 +185,7 @@ class MessageService:
             stmt = (
                 select(DBMessage)
                 .filter(DBMessage.memora_id == memora_id)
+                .filter(DBMessage.sent_by_id == user_id)
                 .order_by(DBMessage.timestamp.desc())
                 .limit(limit)
             )

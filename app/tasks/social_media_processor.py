@@ -232,8 +232,6 @@ def create_message_documents(memora_id: int) -> list[Document]:
             df = DatabaseHandler.read_table(memora_id, table)
 
             if 'content' in df.columns and 'sender_name' in df.columns and 'timestamp_ms' in df.columns:
-                logger.info("Processing table with cols: %s", df.columns)
-
                 # Convert timestamp_ms to readable date
                 df['formatted_date'] = df['timestamp_ms'].apply(
                     lambda ts: datetime.fromtimestamp(ts/1000).strftime('%Y-%m-%d %H:%M:%S')

@@ -24,7 +24,7 @@ async def sync_lipsync(
         arguments={
             "video_url": video_url,
             "audio_url": audio_url,
-            "loop_mode": "loop"
+            # "loop_mode": "loop"
         },
     )
 

@@ -2,13 +2,9 @@ from app.models.user import User
 from sqlalchemy.future import select
 from app.core.database import get_db
 from sqlalchemy import or_
-from app.services.base import BaseService
-from typing import Optional, Dict, Any, List
+from typing import List
 
-class UserService(BaseService[User, dict, dict]):
-    def __init__(self):
-        super().__init__(User)
-
+class UserService:
     async def get_user_by_id(self, user_id: str) -> User | None:
         """
         Retrieve a user by their ID.
@@ -83,23 +79,27 @@ class UserService(BaseService[User, dict, dict]):
             await db.commit()
             return True
 
-    async def get_multi(
+    async def search_users(
         self,
-        user_id: str,
+        current_user_id: str | None = None,
+        name: str | None = None,
         skip: int = 0,
         limit: int = 100,
-        filters: Optional[Dict[str, Any]] = None
     ) -> List[User]:
-        conditions = []
-        
+        """
+        Search for users with optional filters:
+        - Exclude current user (if current_user_id provided)
+        - Filter by name (if name provided)
+        """
         async with get_db() as db:
-            if filters:
-                if "name" in filters:
-                    conditions.append(self.model.name.ilike(f"%{filters['name']}%"))
+            conditions = []
+            
+            if name:
+                conditions.append(User.name.ilike(f"%{name}%"))
+            if current_user_id:
+                conditions.append(User.id != current_user_id)
 
-            conditions.append(self.model.id != user_id)
-
-            stmt = select(self.model)
+            stmt = select(User)
             if conditions:
                 stmt = stmt.filter(or_(*conditions))
             stmt = stmt.offset(skip).limit(limit)

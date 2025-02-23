@@ -15,13 +15,9 @@ async def list_users_by_name(
     current_user: dict = Depends(get_current_user)
 ):
     """Get users with name filter"""
-    filters = {}
-    if name:
-        filters["name"] = name 
-
-    return await user_service.get_multi(
-        user_id=current_user["id"],
+    return await user_service.search_users(
+        current_user_id=current_user["id"],
         skip=skip,
         limit=limit,
-        filters=filters
+        name=name
     ) 

@@ -266,21 +266,17 @@ class MemoraService:
     ) -> List[DBMemora]:
         """Get memoras accessible by a user with optional filters"""
         async with get_db() as db:
-            # Start with base query for accessible memoras
-            query = select(DBMemora).where(
-                or_(
-                    DBMemora.user_id == user_id,
-                    cast(DBMemora.shared_with, Text).contains(user_id)
-                )
-            )
+            if privacy_status and privacy_status == PrivacyStatus.PRIVATE:
+                # For private memoras, check user ownership and shared_with
+                query = select(DBMemora).where(cast(DBMemora.shared_with, Text).contains(user_id))
+                query = query.where(DBMemora.user_id != user_id)
+            else:
+                # Default to public memoras
+                query = select(DBMemora).where(DBMemora.privacy_status == PrivacyStatus.PUBLIC)
 
             # Apply name filter if provided
             if name:
                 query = query.where(DBMemora.name.ilike(f"%{name}%"))
-
-            # Apply privacy status filter if provided
-            if privacy_status:
-                query = query.where(DBMemora.privacy_status == privacy_status)
 
             # Apply has_chat filter if provided
             if has_chat:

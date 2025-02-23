@@ -1,12 +1,10 @@
 from sqlalchemy import create_engine
 import pandas as pd
 import logging
-from app.core.config import settings
 import json
 from pathlib import Path
 import os
 from sqlalchemy import inspect
-from sqlalchemy.pool import StaticPool
 
 logger = logging.getLogger(__name__)
 
@@ -14,17 +12,7 @@ class DatabaseHandler:
     @staticmethod
     def generate_conn_string(memora_id: int) -> str:
         """Create a new database for a memora and return its connection string"""
-        base_url = settings.DATABASE_URL.rsplit('/', 1)[0]
-        db_name = f"memora_{memora_id}"
-        
-        # For SQLite
-        if base_url.startswith('sqlite'):
-            db_path = f"./memora_{memora_id}.db"
-            connection_string = f"sqlite:///{db_path}"
-            # SQLite databases are created automatically when accessed
-            return connection_string
-            
-        return f"{base_url}/{db_name}"
+        return f"sqlite:///memora_{memora_id}.db"
 
     @staticmethod
     def get_table_name_from_path(file_path: str, base_path: str) -> str:
@@ -133,15 +121,9 @@ class DatabaseHandler:
     @staticmethod
     def save_dataframes(connection_string: str, dataframes: dict[str, pd.DataFrame]):
         """Save DataFrames to the database"""
-        # Add connect_args for SQLite to handle async operations
-        if connection_string.startswith('sqlite'):
-            engine = create_engine(
-                connection_string,
-                connect_args={'check_same_thread': False},
-                poolclass=StaticPool
-            )
-        else:
-            engine = create_engine(connection_string)
+        logger.info(f"Saving dataframes to {connection_string}")
+
+        engine = create_engine(connection_string)
 
         for table_name, df in dataframes.items():
             try:
@@ -156,15 +138,12 @@ class DatabaseHandler:
                     df['timestamp'] = pd.Timestamp.now()
                 
                 logger.info("Saving table %s with %d rows", table_name, len(df))
-                
-                # Use a new connection for each operation
-                with engine.connect() as connection:
-                    df.to_sql(
-                        table_name,
-                        connection,
-                        if_exists='replace',
-                        index=False
-                    )
+                df.to_sql(
+                    table_name,
+                    engine,
+                    if_exists='replace',
+                    index=False
+                )
             except Exception as e:
                 logger.error("Error saving DataFrame to database: %s", str(e))
             
